@@ -8,6 +8,7 @@ async fn main() -> ShuttleActixWeb<impl FnOnce(&mut ServiceConfig) + Send + Clon
     let config = move |cfg: &mut ServiceConfig| {
         cfg.service(challenges::intro::seek);
         cfg.service(challenges::day_2::scope());
+        cfg.service(challenges::day_5::scope());
     };
 
     Ok(config.into())
