@@ -19,6 +19,7 @@ async fn main() -> ShuttleActixWeb<impl FnOnce(&mut ServiceConfig) + Send + Clon
         cfg.service(challenges::day_5::scope());
         cfg.service(challenges::day_9::scope()).app_data(milk_bucket);
         cfg.service(challenges::day_12::scope()).app_data(milk_cookie_board);
+        cfg.service(challenges::day_16::scope());
     };
 
     Ok(config.into())
