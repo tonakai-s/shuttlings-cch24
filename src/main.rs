@@ -1,11 +1,14 @@
-use std::{sync::Mutex, time::Duration};
+use std::{fs::File, sync::Mutex, time::Duration};
 
+use actix_files::Files;
 use leaky_bucket::RateLimiter;
 use shuttle_runtime::SecretStore;
 use shuttlings_cch24::challenges::{self, day_12::Board, day_9::MilkBucket, day_19::Paginator};
 
 use actix_web::web::{self, ServiceConfig};
 use shuttle_actix_web::ShuttleActixWeb;
+use tera::Tera;
+use tokio::sync::watch::channel;
 
 #[shuttle_runtime::main]
 async fn main(
@@ -23,8 +26,16 @@ async fn main(
     });
     let milk_cookie_board = web::Data::new(Mutex::new(Board::new()));
     let paginator = web::Data::new(Mutex::new(Paginator::new()));
+    let tera = match Tera::new("./assets/*.html") {
+        Err(e) => {
+            println!("Parsing error: {:?}", e);
+            panic!();
+        },
+        Ok(t) => t
+    };
 
     let config = move |cfg: &mut ServiceConfig| {
+        cfg.service(Files::new("/assets", "assets").show_files_listing());
         cfg.service(challenges::intro::seek);
         cfg.service(challenges::day_2::scope());
         cfg.service(challenges::day_5::scope());
@@ -37,6 +48,8 @@ async fn main(
         cfg.service(challenges::day_19::scope())
             .app_data(web::Data::new(pool))
             .app_data(paginator.clone());
+        cfg.service(challenges::day_23::scope())
+            .app_data(web::Data::new(tera));
     };
 
     Ok(config.into())
