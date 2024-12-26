@@ -1,7 +1,7 @@
 use actix_web::{web, Scope};
 
 mod christmas_dinner {
-    use std::{collections::HashMap, error::Error, io::{self, Read}, iter};
+    use std::{collections::HashMap, error::Error, io::{self, Read}};
 
     use actix_multipart::form::{tempfile::TempFile, MultipartForm};
     use actix_web::{get, post, web, HttpResponse};

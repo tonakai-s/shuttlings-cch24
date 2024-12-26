@@ -1,4 +1,4 @@
-use std::{fs::File, sync::Mutex, time::Duration};
+use std::{sync::Mutex, time::Duration};
 
 use actix_files::Files;
 use leaky_bucket::RateLimiter;
@@ -8,7 +8,6 @@ use shuttlings_cch24::challenges::{self, day_12::Board, day_9::MilkBucket, day_1
 use actix_web::web::{self, ServiceConfig};
 use shuttle_actix_web::ShuttleActixWeb;
 use tera::Tera;
-use tokio::sync::watch::channel;
 
 #[shuttle_runtime::main]
 async fn main(
@@ -42,12 +41,12 @@ async fn main(
         cfg.service(challenges::day_9::scope())
             .app_data(milk_bucket);
         cfg.service(challenges::day_12::scope())
-            .app_data(milk_cookie_board);
+            .app_data(milk_cookie_board.clone());
         cfg.service(challenges::day_16::scope())
             .app_data(web::Data::new(jwt_secret));
         cfg.service(challenges::day_19::scope())
             .app_data(web::Data::new(pool))
-            .app_data(paginator.clone());
+            .app_data(paginator);
         cfg.service(challenges::day_23::scope())
             .app_data(web::Data::new(tera));
     };

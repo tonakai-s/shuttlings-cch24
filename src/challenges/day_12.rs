@@ -1,12 +1,32 @@
+use std::{error::Error, fmt::Display, ops::Sub};
+
 use actix_web::{web, Scope};
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub enum Team {
     #[serde(rename = "milk")]
     Milk,
     #[serde(rename = "cookie")]
     Cookie
+}
+impl TryFrom<String> for Team {
+    type Error = &'static str;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "cookie" => Ok(Self::Cookie),
+            "milk" => Ok(Self::Milk),
+            _ => Err("Invalid value")
+        }
+    }
+}
+impl Display for Team {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Team::Cookie => write!(f, "🍪"),
+            Team::Milk => write!(f, "🥛"),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -15,19 +35,20 @@ pub enum TileState {
     Cookie,
     Milk
 }
-impl TileState {
-    pub fn char(&self) -> char {
+impl Display for TileState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
-            TileState::Empty => '⬛',
-            TileState::Cookie => '🍪',
-            TileState::Milk => '🥛',
-
+            TileState::Empty => write!(f, "⬛"),
+            TileState::Cookie => write!(f, "🍪"),
+            TileState::Milk => write!(f, "🥛"),
         }
     }
 }
+#[derive(Debug)]
 pub struct Board {
     grid: [[TileState;4];4],
-    raw_representation: String
+    raw_representation: String,
+    winner: Option<Team>
 }
 impl Board {
     pub fn new() -> Self {
@@ -38,42 +59,128 @@ impl Board {
 ⬜⬛⬛⬛⬛⬜
 ⬜⬛⬛⬛⬛⬜
 ⬜⬜⬜⬜⬜⬜
-"#.to_string()
+"#.to_string(),
+            winner: None
+        }
+    }
+
+    pub fn set_position(&mut self, team: &Team, mut column: usize) -> Result<(), Box<dyn Error>> {
+        column = column.sub(1);
+        if let
+            Some(r) =
+            self.grid[column as usize]
+                .iter()
+                .position(|t| matches!(*t, TileState::Empty))
+        {
+            match team {
+                Team::Cookie => self.grid[column as usize][r] = TileState::Cookie,
+                Team::Milk => self.grid[column as usize][r] = TileState::Milk,
+            }
+            Ok(())
+        } else {
+            Err(From::from("Full column"))
         }
     }
 
     pub fn grid_update(&mut self) {
-        println!("On grid update: {:?}", self.grid);
         self.raw_representation = format!(
-            "⬜{}{}{}{}⬜\n⬜{}{}{}{}⬜\n⬜{}{}{}{}⬜\n⬜{}{}{}{}⬜\n⬜⬜⬜⬜⬜⬜",
-            self.grid[3][0].char(),self.grid[3][1].char(),self.grid[3][2].char(),self.grid[3][3].char(),
-            self.grid[2][0].char(),self.grid[2][1].char(),self.grid[2][2].char(),self.grid[2][3].char(),
-            self.grid[1][0].char(),self.grid[1][1].char(),self.grid[1][2].char(),self.grid[1][3].char(),
-            self.grid[0][0].char(),self.grid[0][1].char(),self.grid[0][2].char(),self.grid[0][3].char(),
+            "⬜{}{}{}{}⬜\n⬜{}{}{}{}⬜\n⬜{}{}{}{}⬜\n⬜{}{}{}{}⬜\n⬜⬜⬜⬜⬜⬜\n",
+            self.grid[0][3],self.grid[1][3],self.grid[2][3],self.grid[3][3],
+            self.grid[0][2],self.grid[1][2],self.grid[2][2],self.grid[3][2],
+            self.grid[0][1],self.grid[1][1],self.grid[2][1],self.grid[3][1],
+            self.grid[0][0],self.grid[1][0],self.grid[2][0],self.grid[3][0],
         );
     }
 
-    pub fn column_winner(&self) -> Option<Team> {
-        if self.grid.iter().any(|column| column.iter().all(|t| matches!(t, TileState::Cookie))) {
-            return Some(Team::Cookie);
+    fn column_winner(&self) -> bool {
+        self.grid
+            .iter()
+            .any(
+                |column| {
+                    column.iter().all(|t| matches!(t, TileState::Milk)) ||
+                    column.iter().all(|t| matches!(t, TileState::Cookie))
+                }
+            )
+    }
+
+    fn row_winner(&self) -> bool {
+        let mut rows: Vec<Vec<TileState>> = Vec::from([vec![], vec![], vec![], vec![]]);
+        for c in self.grid {
+            for (ri, r) in c.iter().enumerate() {
+                rows[ri].push(*r);
+            }
         }
-        if self.grid.iter().any(|column| column.iter().all(|t| matches!(t, TileState::Milk))) {
-            return Some(Team::Milk);
+
+        rows.iter().any(
+                |row| {
+                    row.iter().all(|t| matches!(t, TileState::Milk)) ||
+                    row.iter().all(|t| matches!(t, TileState::Cookie))
+                }
+            )
+    }
+
+    fn diagonal_winner(&self) -> bool {
+        let right_top_left_down = [
+            self.grid[0][3], self.grid[1][2], self.grid[2][1], self.grid[3][0]
+        ];
+
+        if
+            right_top_left_down.iter().all(|t| matches!(t, TileState::Milk)) ||
+            right_top_left_down.iter().all(|t| matches!(t, TileState::Cookie))
+        {
+            return true;
         }
-        None
+
+        let right_down_left_top = [
+            self.grid[0][0], self.grid[1][1], self.grid[2][2], self.grid[3][3]
+        ];
+
+        right_down_left_top.iter().all(|t| matches!(t, TileState::Milk)) ||
+        right_down_left_top.iter().all(|t| matches!(t, TileState::Cookie))
+    }
+
+    pub fn winner(&self) -> bool {
+        if self.column_winner() == true {
+            return true;
+        }
+        if self.row_winner() == true {
+            return true;
+        }
+        if self.diagonal_winner() == true {
+            return true;
+        }
+        false
+    }
+
+    pub fn full(&self) -> bool {
+        !self.grid
+            .iter()
+            .any(
+                |column| {
+                    column.iter().any(|t| matches!(t, TileState::Empty))
+                }
+            )
     }
 }
 
 mod day_12 {
-    use std::{mem, ops::Sub, sync::Mutex};
+    use std::{mem, sync::Mutex};
 
     use actix_web::{ get, post, web, HttpResponse};
-    use crate::challenges::day_12::{Board, TileState, Team};
+    use crate::challenges::day_12::{Board, Team};
 
     #[get("/board")]
-    async fn board() -> HttpResponse {
-        let board = Board::new();
-        HttpResponse::Ok().body(board.raw_representation)
+    async fn board(board_state: web::Data<Mutex<Board>>) -> HttpResponse {
+        let state = board_state.lock().unwrap();
+        if state.full() {
+            return HttpResponse::Ok().body(format!("{}No winner.\n", state.raw_representation));
+        }
+
+        let mut complement = String::new();
+        if let Some(w) = &state.winner {
+            complement = format!("{} wins!\n", w);
+        }
+        HttpResponse::Ok().body(format!("{}{}", state.raw_representation, complement))
     }
 
     #[post("/reset")]
@@ -84,32 +191,44 @@ mod day_12 {
     }
 
     #[post("/place/{team}/{column}")]
-    async fn place(board_state: web::Data<Mutex<Board>>, path: web::Path<(Team, u8)>) -> HttpResponse {
-        let mut state = board_state.lock().unwrap();
+    async fn place(board_state: web::Data<Mutex<Board>>, path: web::Path<(String, String)>) -> HttpResponse {
         let (team, column) = path.into_inner();
-        if column < 1 || column > 4 {
-            return HttpResponse::BadRequest().finish();
+        let team = match Team::try_from(team) {
+            Ok(t) => t,
+            Err(_) => return HttpResponse::BadRequest().finish()
+        };
+
+        let column = match column.parse::<u8>() {
+            Err(_) => return HttpResponse::BadRequest().finish(),
+            Ok(c) => {
+                if c < 1 || c > 4 {
+                    return HttpResponse::BadRequest().finish();
+                }
+                c
+            }
+        };
+        let mut state = board_state.lock().unwrap();
+        if let Some(w) = &state.winner {
+            return HttpResponse::ServiceUnavailable().body(format!("{}{} wins!\n", state.raw_representation, w));
+        }
+        if state.full() {
+            return HttpResponse::Ok().body(format!("{}No winner.\n", state.raw_representation));
         }
 
-        if let Some(r) = state.grid[column as usize].iter().position(|t| matches!(t, TileState::Empty)) {
-            println!("Row: {r}");
-            println!("Grid: {:?}", state.grid[column as usize].clone());
-            match team {
-                Team::Cookie => state.grid[column.sub(1) as usize][r] = TileState::Cookie,
-                Team::Milk => state.grid[column.sub(1) as usize][r] = TileState::Milk,
-            }
-        } else {
+        if let Err(e) = state.set_position(&team, column.into()) {
             return HttpResponse::ServiceUnavailable().finish();
         }
-
         state.grid_update();
-        HttpResponse::Ok().body(state.raw_representation.clone())
 
-        // if let Some(winner) = state.column_winner() {
-        //     return HttpResponse::Ok().finish();
-        // }
+        let mut complement: String = String::new();
+        if state.winner() == true {
+            complement = format!("{} wins!\n", team);
+            state.winner = Some(team);
+        } else if state.full() {
+            return HttpResponse::Ok().body(format!("{}No winner.\n", state.raw_representation));
+        }
 
-        // HttpResponse::Ok().finish()
+        HttpResponse::Ok().body(format!("{}{}", state.raw_representation, complement))
     }
 }
 
